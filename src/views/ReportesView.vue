@@ -1,6 +1,18 @@
 <template>
   <div class="center">
-    <DataTable :value="reportData" ref="dt" responsiveLayout="scroll">
+    <DataTable
+      :value="reportData"
+      ref="dt"
+      responsiveLayout="scroll"
+      :paginator="true"
+      :rows="25"
+      paginatorTemplate="CurrentPageReport FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
+      :rowsPerPageOptions="[25, 50, 100]"
+      dataKey="id"
+      filterDisplay="row"
+      currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
+      v-model:filters="filters"
+    >
       <template #header>
         <h2 class="">Reporte General</h2>
 
@@ -22,10 +34,37 @@
           </div>
         </div>
       </template>
-      <template #loading>
-        Loading customers data. Please wait.
-      </template>
 
+      <Column field="year" header="Año" style="min-width: 2rem;">
+        <template #body="{data}">
+          {{ data.year }}
+        </template>
+        <template #filter="{filterModel,filterCallback}">
+          <InputText
+            type="text"
+            v-model="filterModel.value"
+            @keydown.enter="filterCallback()"
+            class="p-column-filter"
+            :placeholder="`Search by year - `"
+            v-tooltip.top.focus="'Hit enter key to filter'"
+          />
+        </template>
+      </Column>
+      <Column field="district" header="Distrito" style="min-width: 2rem;">
+        <template #body="{data}">
+          {{ data.district }}
+        </template>
+        <template #filter="{filterModel,filterCallback}">
+          <InputText
+            type="text"
+            v-model="filterModel.value"
+            @keydown.enter="filterCallback()"
+            class="p-column-filter"
+            :placeholder="`Search by district - `"
+            v-tooltip.top.focus="'Hit enter key to filter'"
+          />
+        </template>
+      </Column>
       <Column
         v-for="col of columns"
         :field="col.field"
@@ -37,28 +76,26 @@
 </template>
 
 <script>
-import Dropdown from 'primevue/dropdown'
-import Button from 'primevue/button'
-import Column from 'primevue/column'
-import ProgressSpinner from 'primevue/progressspinner'
+import { FilterMatchMode } from 'primevue/api'
 
-import DataTable from 'primevue/datatable'
 import ReportApiServices from '../services/ReportApiServices'
 import YearsApiServices from '../services/YearApiServices'
 import DistrictApiServices from '../services/DistrictApiServices'
 
 export default {
-  components: { DataTable, Button, Dropdown, Column, ProgressSpinner },
+  components: {},
   data() {
     return {
       years: [],
       districts: [],
-      rateData: [],
+
+      filters: {
+        year: { value: null, matchMode: FilterMatchMode.STARTS_WITH },
+        district: { value: null, matchMode: FilterMatchMode.STARTS_WITH },
+        category: { value: null, matchMode: FilterMatchMode.STARTS_WITH },
+      },
       loaded: false,
       columns: [
-        { field: 'id', header: 'Id' },
-        { field: 'year', header: 'Año' },
-        { field: 'district', header: 'Distrito' },
         { field: 'total', header: 'Total de Denuncias' },
         { field: 'avg_rate', header: 'Promedio de Calificacion' },
         { field: 'porcentaje', header: 'Porcentaje de Objetivos' },
@@ -67,8 +104,6 @@ export default {
     }
   },
   async created() {
-    await this.getYears()
-    await this.getDistricts()
     await this.getChartData()
   },
   computed: {},
@@ -79,62 +114,33 @@ export default {
     exportCSV() {
       this.$refs.dt.exportCSV()
     },
-    async getDistricts() {
-      try {
-        let districtData = await DistrictApiServices.getDistricts()
-        districtData = districtData.data
-        for (const district of districtData) {
-          this.districts.push({
-            text: district.district_name,
-            value: district.id,
-          })
-        }
-      } catch (e) {
-        console.error(e)
-      }
-    },
-    async getYears() {
-      try {
-        let yearsData = await YearsApiServices.getYears()
-        yearsData = yearsData.data
-        for (const year of yearsData) {
-          this.years.push({ text: year.year_date, value: year.id })
-        }
-      } catch (e) {
-        console.error(e)
-      }
-    },
+
     async getChartData() {
       try {
         this.loaded = false
 
         let reportData = await ReportApiServices.getGeneralReports()
         reportData = reportData.data
-        for (const district of this.districts) {
-          for (const year of this.years) {
-            let total = 0
-            let avg_rate = 0
-            let porcentaje = 0
-            for (const report of reportData) {
-              if (
-                report.district === district.value &&
-                report.year === year.value
-              ) {
-                total = report.total
-                avg_rate = report.avg_rate
-                porcentaje = report.porcentaje
-              }
-            }
-            this.reportData.push({
-              id: this.reportData.length + 1,
-              total: total,
-              district: district.text,
-              year: year.text,
-              avg_rate: avg_rate,
-              porcentaje: porcentaje,
-            })
+
+        let districtData = await DistrictApiServices.getDistricts()
+        districtData = districtData.data
+
+        let yearData = await YearsApiServices.getYears()
+        yearData = yearData.data
+
+        this.reportData = await reportData.map((report) => {
+          let district = districtData.find((d) => d.id === report.district)
+          let year = yearData.find((y) => y.id === report.year)
+
+          return {
+            district: district.district_name,
+            year: year.year_date,
+            total: report.total,
+            avg_rate: report.avg_rate,
+            porcentaje: report.porcentaje,
           }
-        }
+        })
+
         this.loaded = true
       } catch (e) {
         console.error(e)
